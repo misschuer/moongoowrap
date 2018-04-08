@@ -49,7 +49,7 @@ function _M.find_one( self, query, fields)
     local col = get_collection(conn, self.db_name, self.table_name)
     local cursor = col:find(query, fields)
     local ret, err = cursor:limit(-1):next()
-    if err then
+    if err and string.lower(err) ~= 'no more data' then
         return nil, err
     end
     if ret then
@@ -75,7 +75,7 @@ function _M.find( self, query, fields, sorts, limits, skips)
     local results = {}
     while true do
         local data, err = cursor:next()
-        if err then
+        if err and string.lower(err) ~= 'no more data' then
             return nil, err
         end
         if not data then
