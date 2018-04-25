@@ -1,4 +1,5 @@
 local moongoo = require("resty.moongoo")
+local config = require("app.config.config")
 
 local ok, new_tab = pcall(require, "table.new")
 if not ok or type(new_tab) ~= "function" then
@@ -29,14 +30,33 @@ end
 
 local mt = { __index = _M }
 
+local function change_id(data, src, dst)
+    if not data then
+        return
+    end
+    data[dst] = data[src]
+    data[src] = nil
+end
+
+function _M.to_save_id(self, data)
+    change_id(data, 'id', '_id')
+end
+
+local function to_use_id(data)
+    change_id(data, '_id', 'id')
+end
+
+--[[
+把_id 转成 id
+--]]
 local function convert_data(data)
     for key, val in pairs(data) do
-        if key == '_id' then
-            data[key] = nil
-        elseif type(val) == 'userdata' then
+        if type(val) == 'userdata' then
             data[key] = tonumber(tostring(val))
         end
     end
+    to_use_id(data)
+    
     return data
 end
 
@@ -45,7 +65,7 @@ function _M.find_one( self, query, fields)
     if not conn then
         return nil, err
     end
-    
+    self:to_save_id(query)
     local col = get_collection(conn, self.db_name, self.table_name)
     local cursor = col:find(query, fields)
     local ret, err = cursor:limit(-1):next()
@@ -66,6 +86,7 @@ function _M.find( self, query, fields, sorts, limits, skips)
         return nil, err
     end
     
+    self:to_save_id(query)
     local col = get_collection(conn, self.db_name, self.table_name)
     local cursor = col:find(query, fields)
     cursor = sorts and cursor:sort(sorts) or cursor
@@ -96,6 +117,7 @@ function _M.count( self, query, limits, skips)
         return nil, err
     end
     
+    self:to_save_id(query)
     local col = get_collection(conn, self.db_name, self.table_name)
     local cursor = col:find(query)
     cursor = limits and cursor:limit(limits) or cursor
@@ -126,11 +148,11 @@ local function do_command(self, cmd, ... )
     return result, nil
 end
 
-function _M.new(self, config)
-    config = config or {}
-    config.db_string = config.db_string or conf.db_string
-    config.db_name    = config.db_name or conf.db_name
-    config.table_name = config.table_name or 'test'
+function _M.new(self, conf)
+    conf = conf or {}
+    conf.db_string  = conf.db_string    or config.mongo.db_string
+    conf.db_name    = conf.db_name      or config.mongo.db_name
+    conf.table_name = conf.table_name   or 'test'
     
     for i = 1, #commands do
         local cmd = commands[i]
@@ -141,9 +163,9 @@ function _M.new(self, config)
     end
 
     return setmetatable({
-        db_string   = config.db_string,
-        db_name     = config.db_name,
-        table_name  = config.table_name,
+        db_string   = conf.db_string,
+        db_name     = conf.db_name,
+        table_name  = conf.table_name,
     }, mt)
 end
 
