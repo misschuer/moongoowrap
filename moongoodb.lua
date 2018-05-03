@@ -49,10 +49,12 @@ end
 --[[
 把_id 转成 id
 --]]
-local function convert_data(data)
+function _M.convert_data(self, data)
     for key, val in pairs(data) do
         if type(val) == 'userdata' then
             data[key] = tonumber(tostring(val))
+        elseif type(val) == 'table' then
+            data[key] = self:convert_data(val)
         end
     end
     to_use_id(data)
@@ -66,6 +68,7 @@ function _M.find_one( self, query, fields)
         return nil, err
     end
     self:to_save_id(query)
+    self:to_save_id(fields)
     local col = get_collection(conn, self.db_name, self.table_name)
     local cursor = col:find(query, fields)
     local ret, err = cursor:limit(-1):next()
@@ -73,7 +76,7 @@ function _M.find_one( self, query, fields)
         return nil, err
     end
     if ret then
-        ret = convert_data(ret)
+        ret = self:convert_data(ret)
     end
     setkeepalive(conn)
 
@@ -87,6 +90,7 @@ function _M.find( self, query, fields, sorts, limits, skips)
     end
     
     self:to_save_id(query)
+    self:to_save_id(fields)
     local col = get_collection(conn, self.db_name, self.table_name)
     local cursor = col:find(query, fields)
     cursor = sorts and cursor:sort(sorts) or cursor
@@ -102,10 +106,39 @@ function _M.find( self, query, fields, sorts, limits, skips)
         if not data then
             break
         end
-        data = convert_data(data)
+        data = self:convert_data(data)
         table.insert(results, data)
     end
     
+    setkeepalive(conn)
+
+    return results
+end
+
+--[[
+只查询返回cursor对象的结果
+在collection.lua的aggregate方法中  doc.cursor.id 改成 cbson.uint(doc.cursor.id)
+--]]
+function _M.aggregate( self, pipeline)
+    local conn, err = get_connection(self.db_string, self.db_name, self.table_name)
+    if not conn then
+        return nil, err
+    end
+    local col = get_collection(conn, self.db_name, self.table_name)
+    local cursor = col:aggregate(pipeline)
+    local results = {}
+    while true do
+        local data, err = cursor:next()
+        if err and string.lower(err) ~= 'no more data' then
+            return nil, err
+        end
+        if not data then
+            break
+        end
+        data = self:convert_data(data)
+        table.insert(results, data)
+    end
+
     setkeepalive(conn)
 
     return results
